@@ -4,6 +4,8 @@ library(data.table) # Implements the %like% operator
 library(caret)
 library(ggplot2)
 library(readxl)
+library(reshape2) 
+
 
 setwd("D:\\MRc\\FIIT\\ING\\sem2\\oznal\\zadanie_1") 
 list.files() # List all files in the working directory
@@ -55,6 +57,8 @@ convert_to_numeric <- function(data) {
   new_data <- data
   
   # Convert Reviews to numeric
+  new_data$Current.Ver <- as.numeric(new_data$Current.Ver)
+  
   new_data$Reviews <- as.numeric(new_data$Reviews)
   
   # Convert Installs to numeric and remove '+'
@@ -105,4 +109,49 @@ new_data_filled <- fill_missing_with_mean(new_data)
 head(new_data_filled)
 View(new_data_filled)
 
+colnames(new_data_filled)
+
+
+
+
+# Calculate correlation matrix
+correlation_matrix <- cor(new_data_filled[, c("Rating", "Reviews", "Size_in_MB", "Installs", "Price_in_Dollars")])
+
+# Print correlation matrix
+print(correlation_matrix)
+
+# Create a dataframe from the correlation matrix
+correlation_df <- as.data.frame(correlation_matrix)
+correlation_df$row <- rownames(correlation_matrix)
+
+# Melt the dataframe to long format
+correlation_df_long <- reshape2::melt(correlation_df, id.vars = "row")
+
+# Plot heatmap
+ggplot(correlation_df_long, aes(x = row, y = variable, fill = value)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0, limit = c(-1, 1), space = "Lab", name = "Correlation") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+
+# Add a new column "Rating Level" based on the Rating column
+new_data_filled$Rating_Level <- ifelse(new_data_filled$Rating >= 4.0, "High", "Low")
+
+ggplot(new_data_filled, aes(x = Rating_Level, fill = Rating_Level)) +
+  geom_bar() +
+  labs(title = "Distribution of Rating Levels", x = "Rating Level", y = "Count") +
+  theme_minimal()
+
+
+# Distribution of Rating level and number of installs
+ggplot(data = new_data_filled, aes(x = Rating_Level, y = Installs,
+                        fill = factor(Rating_Level))) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(fill = "Rating_level")
+
+
+
+# Define the columns of interest
+columns_of_interest <- c("Reviews", "Size_in_MB", "Installs", "Price_in_Dollars", "Current.Ver")
 
