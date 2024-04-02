@@ -5,6 +5,7 @@ library(caret)
 library(ggplot2)
 library(readxl)
 library(reshape2) 
+library(gridExtra)
 
 
 setwd("D:\\MRc\\FIIT\\ING\\sem2\\oznal\\zadanie_1") 
@@ -16,7 +17,7 @@ data_user_reviews <- read.csv("googleplaystore_user_reviews.csv")
 head(data,10)
 head(data_user_reviews,10)
 
-# View(data)
+View(data)
 View(data_user_reviews)
 
 # Descriptive statistics
@@ -56,19 +57,31 @@ convert_to_numeric <- function(data) {
   # Make a copy of the original dataset
   new_data <- data
   
-  # Convert Reviews to numeric
-  new_data$Current.Ver <- as.numeric(new_data$Current.Ver)
+  # Function to extract the substring before the second dot and convert to float
+  extract_float <- function(x) {
+    dots <- gregexpr("\\.", x)[[1]]
+    if (length(dots) >= 2) {
+      float_value <- as.numeric(substring(x, 1, dots[2] - 1))
+    } else {
+      float_value <- as.numeric(x)
+    }
+    return(float_value)
+  }
   
-  new_data$Reviews <- as.numeric(new_data$Reviews)
+  # Convert Current.Ver to float
+  new_data$Current.Ver <- sapply(new_data$Current.Ver, extract_float)
+  
+  # Convert Reviews to numeric
+  new_data$Reviews <- as.numeric(as.character(new_data$Reviews))
   
   # Convert Installs to numeric and remove '+'
-  new_data$Installs <- as.numeric(gsub("[^0-9.]", "", new_data$Installs))
+  new_data$Installs <- as.integer(gsub("[^0-9.]", "", as.character(new_data$Installs)))
   
   # Convert Size to numeric and remove 'M'
-  new_data$Size <- as.numeric(gsub("M", "", new_data$Size))
+  new_data$Size <- as.numeric(gsub("M", "", as.character(new_data$Size)))
   
   # Convert Price to numeric and remove '$'
-  new_data$Price <- as.numeric(gsub("\\$", "", new_data$Price))
+  new_data$Price <- as.numeric(gsub("\\$", "", as.character(new_data$Price)))
   
   # Round numeric columns to 2 decimal places
   numeric_cols <- sapply(new_data, is.numeric)
@@ -80,6 +93,7 @@ convert_to_numeric <- function(data) {
   
   return(new_data)
 }
+
 
 # Apply the function to the dataset
 new_data <- convert_to_numeric(data)
@@ -100,10 +114,31 @@ fill_missing_with_mean <- function(data) {
   return(data)
 }
 
+handle_outliers <- function(data, columns) {
+  # Loop through each specified column
+  for (col in columns) {
+    # Calculate quartiles
+    q1 <- quantile(data[[col]], 0.25, na.rm = TRUE)
+    q3 <- quantile(data[[col]], 0.75, na.rm = TRUE)
+    
+    # Calculate IQR
+    iqr <- q3 - q1
+    
+    # Define upper and lower bounds for outliers
+    upper_bound <- q3 + 1.5 * iqr
+    lower_bound <- q1 - 1.5 * iqr
+    
+    # Replace outliers with NA using ifelse
+    data[[col]] <- ifelse(data[[col]] < lower_bound | data[[col]] > upper_bound, NA, data[[col]])
+  }
+  
+  return(data)
+}
+columns_of_interest <- c("Reviews","Rating", "Size_in_MB", "Installs", "Price_in_Dollars", "Current.Ver")
+
 # Apply the function to the dataset
+#new_data_filled <- handle_outliers(new_data, columns_of_interest)
 new_data_filled <- fill_missing_with_mean(new_data)
-
-
 
 # Print first few rows to verify the changes
 head(new_data_filled)
@@ -113,6 +148,9 @@ colnames(new_data_filled)
 
 
 
+
+###### PLOTTING AND EAMINIG RELATIONS ######
+new_data_filled$Rating_Level <- ifelse(new_data_filled$Rating >= 4.0, "High", "Low")
 
 # Calculate correlation matrix
 correlation_matrix <- cor(new_data_filled[, c("Rating", "Reviews", "Size_in_MB", "Installs", "Price_in_Dollars")])
@@ -135,13 +173,14 @@ ggplot(correlation_df_long, aes(x = row, y = variable, fill = value)) +
   theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
 
 # Add a new column "Rating Level" based on the Rating column
-new_data_filled$Rating_Level <- ifelse(new_data_filled$Rating >= 4.0, "High", "Low")
 
 ggplot(new_data_filled, aes(x = Rating_Level, fill = Rating_Level)) +
   geom_bar() +
   labs(title = "Distribution of Rating Levels", x = "Rating Level", y = "Count") +
   theme_minimal()
 
+rating_counts <- table(new_data_filled$Rating_Level)
+print(rating_counts)
 
 # Distribution of Rating level and number of installs
 ggplot(data = new_data_filled, aes(x = Rating_Level, y = Installs,
@@ -151,7 +190,30 @@ ggplot(data = new_data_filled, aes(x = Rating_Level, y = Installs,
   labs(fill = "Rating_level")
 
 
-
 # Define the columns of interest
-columns_of_interest <- c("Reviews", "Size_in_MB", "Installs", "Price_in_Dollars", "Current.Ver")
+columns_of_interest <- c("Reviews","Rating", "Size_in_MB", "Installs", "Price_in_Dollars", "Current.Ver")
+
+
+# Create scatter plots
+scatter_plots <- lapply(columns_of_interest, function(col) {
+  ggplot(new_data_filled, aes_string(x = col, y = "Rating")) +
+    geom_point(color = 'red') +
+    labs(title = paste("Scatter plot of", col, "vs Rating"), x = col, y = "Rating") +
+    theme_light()
+})
+
+# Arrange scatter plots on one canvas
+grid.arrange(grobs = scatter_plots, ncol = 2)  # C
+
+# Create a column indicating whether Installs are above or below the mean
+new_data_filled$Above_Mean <- ifelse(new_data_filled$Installs > mean_installs, "Above Mean", "Below Mean")
+
+ggplot(new_data_filled, aes(x = Installs, y = 0, color = Above_Mean)) +
+  geom_jitter(height = 0, width = 50000) +  # Adjust width for better visualization
+  geom_vline(xintercept = mean_installs, linetype = "dashed", color = "green", linewidth = 1.5) +  # Add vertical line for mean
+  labs(title = "Distribution of Installs Above and Below Mean", x = "Installs", y = "") +
+  scale_color_manual(values = c("red", "blue"), guide = FALSE) +  # Set colors and remove legend
+  theme_minimal()
+
+
 
