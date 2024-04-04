@@ -55,23 +55,25 @@ library(cowplot)
 Nastavenie pracovnho adresára a vylistovanie súborov v ňom.
 
 ```{r}
-setwd("D:/MRc/FIIT/ING/sem2/oznal/zadanie_1") 
+setwd("C:/Users/David/Desktop/skola/ING/4.semester/OZNAL/Projekt/OZNAL-Submission1-Regression-Classification") 
 list.files() 
 ```
 
-Načítanie csv datasetov.
+## Načítanie csv datasetov.
 
 ```{r}
 data <- read.csv("heart_attack_prediction_dataset.csv")
 names(data)
 head(data)
 ```
+
+## Dataset summary 
 Opis datasetu cez summary()
 
 ```{r}
 summary(data)
 ```
-
+## Unikátne hodnoty v datasete
 
 ```{r}
 
@@ -79,9 +81,56 @@ number_of_uniq_data <- sapply(data, function(x) length(unique(x)))
 cat("Unique values in dataset:\n")
 print(number_of_uniq_data)
 
-
 ```
-Vidíme, že ako sme prepodkladali, dáta ktoré sa podľa názvu zdali byť binárne reálne disponujú dvomi hodnotami,, teda nemusíme sa zaoberať týmto problémom dalej. 
+
+Vidíme, že ako sme prepodkladali, dáta ktoré sa podľa názvu zdali byť binárne reálne disponujú dvomi hodnotami, teda nemusíme sa zaoberať týmto problémom dalej.
+
+
+Zakódujeme character dáta ako Diéta, Sex a Continent do Numeric a údaje o meraní tlaku rozdelíme do śtĺpcov Systolic a Diastolic. Zároveň si zakódujeme Continent cez dummy variable. Pridáme tak 6 stĺpcov, každý reprezentujúci jeden kontinent.
+
+```{r}
+data %<>%
+  mutate(
+    Diet_code = case_when(
+      data$Diet == "Average" ~ 1,
+      data$Diet == "Unhealthy" ~ 2,
+      data$Diet == "Healthy" ~ 0))  %>%
+  relocate(Diet_code, .before = Diet)
+
+data %<>%
+  mutate(
+    Sex_code = case_when(
+      data$Sex == "Male" ~ 0,
+      data$Sex == "Female" ~ 1))  %>%
+  relocate(Sex_code, .after = Sex)
+
+
+data %<>%
+  mutate(
+    Pensioner = case_when(
+      data$Age > 67 ~ 1,
+      .default = 0))  %>%
+  relocate(Pensioner, .after = Age)
+
+
+data %<>%
+  mutate(
+    Systolic = as.numeric(sapply(strsplit(Blood.Pressure, "/"), `[`, 1)),
+    Diastolic = as.numeric(sapply(strsplit(Blood.Pressure, "/"), `[`, 2))) %>%
+  relocate(Systolic, Diastolic, .after = Blood.Pressure)
+
+data %<>% 
+  mutate(
+    Africa = case_when(Continent == "Africa" ~ 1, TRUE ~ 0),
+    Asia = case_when(Continent == "Asia" ~ 1, TRUE ~ 0),
+    Europe = case_when(Continent == "Europe" ~ 1, TRUE ~ 0),
+    North_America = case_when(Continent == "North America" ~ 1, TRUE ~ 0),
+    South_America = case_when(Continent == "South America" ~ 1, TRUE ~ 0),
+    Australia = case_when(Continent == "Australia" ~ 1, TRUE ~ 0)
+  )
+
+View(data)
+```
 
 
 Vykreslíme si grafy, ktoré nám povedia o rozložení v danom stĺpci.
@@ -158,30 +207,18 @@ handle_outliers <- function(data, columns, sensitivity) {
   # Return the cleaned data and the NA counts
   return(data)
 }
-View(data)
+
+```
+
+Ak chceme použiť outliers removal tak spusti túto bunku
+
+```{r}
 interesting_columns <- c("BMI", "Cholesterol")
-# Apply the function to your dataset
+
 cat("The dataset has", dim(data)[1], "rows and", dim(data)[2], "columns\n")
 dataWithOutliers <- data
 data <- handle_outliers(data, interesting_columns, 0.5)
 cat("The dataset has", dim(data)[1], "rows and", dim(data)[2], "columns\n")
-
-
-
-
-```
-
-
-Prejdeme na samotnú prípravu stĺpcov na modely. Najskôr vytvoríme dva stĺpce. Tie vzniknú "rozdelením" Blood Pressure stĺpca a teda vytvoríme Systolic a Diastolic stĺpce. 
-
-```{r}
- data %<>%
-  mutate( 
-         Systolic = as.numeric(sapply(strsplit(Blood.Pressure, "/"), `[`, 1)),
-         Diastolic = as.numeric(sapply(strsplit(Blood.Pressure, "/"), `[`, 2))) %>%
-  relocate(Systolic, Diastolic, .after = Blood.Pressure)
-
-head(data)
 ```
 
 Vzhľadom na to, že vo väčšine prípadov ľudia nevedia odhadnúť svoju fyzickú aktivitu alebo sedavý čas s takou presnosťou ako je v datasete ( 5/8 desatinnych miest). Tak si tieto hodnoty zaokrúhlime na dve desatinné miesta. 
@@ -194,38 +231,7 @@ data %>%
   head()
 ```
 
-Zakódovanie hodnôt Diet a Sex do numeric
-
-```{r}
-data %<>%
-  mutate(
-    Diet_code = case_when(
-      data$Diet == "Average" ~ 1,
-      data$Diet == "Unhealthy" ~ 2,
-      data$Diet == "Healthy" ~ 0))  %>%
-  relocate(Diet_code, .before = Diet)
-
-data %<>%
-  mutate(
-    Sex_code = case_when(
-      data$Sex == "Male" ~ 0,
-      data$Sex == "Female" ~ 1))  %>%
-  relocate(Sex_code, .after = Sex)
-
-
-data %<>%
-  mutate(
-    Pensioner = case_when(
-      data$Age > 67 ~ 1,
-      .default = 0))  %>%
-  relocate(Pensioner, .after = Age)
-
-head(data)
-
-```
-
-
-
+Pomocné funkcie na vykreslenie
 
 ```{r}
 #-----Helper functions-----
@@ -265,14 +271,15 @@ panel.lm <- function(x,y,col = par("col"), bg = NA, pch = par("pch"),
 ```{r}
 data %>%
   dplyr::filter() %$%
-  pairs( ~ BMI + Exercise.Hours.Per.Week + Diet_code + Cholesterol + Sedentary.Hours.Per.Day ,    
+  pairs( ~ BMI + Exercise.Hours.Per.Week + Diet_code + Cholesterol + Sedentary.Hours.Per.Day + North_America,    
          upper.panel= NULL, 
          diag.panel=panel.hist,
          lower.panel=panel.smooth)
 ```
 
 ```{r}
-correlation_matrix <- cor(data[, c('BMI', 'Exercise.Hours.Per.Week', 'Diet_code', 'Cholesterol', 'Sedentary.Hours.Per.Day', 'Heart.Rate')])
+
+correlation_matrix <- cor(data[, c('BMI', 'Exercise.Hours.Per.Week', 'Diet_code', 'Cholesterol', 'Sedentary.Hours.Per.Day', 'Heart.Rate', 'Obesity', "Heart.Attack.Risk", "Diabetes", "Family.History")])
 print(correlation_matrix)
 
 # Create a dataframe from the correlation matrix
@@ -285,7 +292,8 @@ correlation_df_long <- reshape2::melt(correlation_df, id.vars = "row")
 # Plot heatmap
 ggplot(correlation_df_long, aes(x = row, y = variable, fill = value)) +
   geom_tile() +
-  scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0, limit = c(-1, 1), space = "Lab", name = "Correlation") +
+  geom_text(aes(label = sprintf("%.4f", value)), color = "white", size = 3) +
+  scale_fill_gradient2(low = "blue", high = "yellow", mid = "black", midpoint = 0, limit = c(-1, 1), space = "Lab", name = "Correlation") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
 
@@ -348,7 +356,7 @@ Diet_code (H0): Zmena v diétnom kóde nemá žiadny vplyv na hodnoty BMI jedinc
 
 ```{r}
 model <- data %$% 
-  lm(BMI ~ Cholesterol + Diet_code )
+  lm(BMI ~ Cholesterol + Diet_code + Obesity + Heart.Rate)
 
 summary(model)
 ```
@@ -356,9 +364,11 @@ Na základe výstupu z lineárneho regresného modelu:
 
 - Intercept: Priemerná hodnota BMI, keď sú všetky ostatné premenné nulové, je 28.37. Tento koeficient je štatisticky významný (p < 0.05).
 
-- Cholesterol: Za každú jednotku zvýšenia cholesterolu sa BMI zvýši o 0.001837, čo je štatisticky významné (p < 0.05). Hoci je vplyv malý, je považovaný za štatisticky signifikantný.
+- Cholesterol: Za každú jednotku zvýšenia cholesterolu sa BMI zvýši o 0.001835, čo je štatisticky významné (p < 0.05). Hoci je vplyv malý, je považovaný za štatisticky signifikantný.
 
-- Diet_code: Tento koeficient ukazuje zmenu v BMI pre zmenu dietného kódu o jednu jednotku. Hodnota -0.0934183 nie je štatisticky významná (p > 0.05), čo naznačuje, že zmena diéty nemá významný vplyv na BMI. Dokonca ukazuje opačný ako očakávaný výsledok, kedže hodnoty v Diet.Code sú nastavené tak, že čím vyšia hodnota tým viac očakávame BMI.
+- Diet_code: Tento koeficient ukazuje zmenu v BMI pre zmenu dietného kódu o jednu jednotku. Hodnota -0.0936 nie je štatisticky významná (p > 0.05), čo naznačuje, že zmena diéty nemá významný vplyv na BMI. Dokonca ukazuje opačný ako očakávaný výsledok, kedže hodnoty v Diet.Code sú nastavené tak, že čím vyšia hodnota tým viac očakávame BMI.
+
+- Obesity a Heart.Rate ani nebudeme komentovať
 
 
 Model má nízke R-squared hodnoty, čo naznačuje, že tieto premenné spoločne vysvetľujú len malú časť variability hladiny cholesterolu. Celkový F-test je štatisticky významný, čo naznačuje, že model ako celok má určitú predikčnú schopnosť, ale táto schopnosť je značne obmedzená :D .
@@ -367,16 +377,17 @@ Residual standard error: Priemerná odchýlka skutočných hodnôt BMI od hodnô
 Multiple R-squared: Koeficient determinácie 0.0006899  hovorí, že model vysvetľuje len veľmi malé percento variability v BMI.
 Adjusted R-squared: Upravený R-kvadrát 0.0004556 zohľadňuje počet prediktorov v modeli a ponúka realistický pohľad na vysvetľujúcu silu modelu, ktorá je stále veľmi nízka.
 
-Celkovo tieto štatistiky naznačujú, že model nevysvetľuje skoro žiadnu variabilitu v závislej premennej a nemusí byť štatisticky významný na úrovni signifikancie 0.05. Mohlo by to naznačovať potrebu prehodnotiť dáta, alebo skúsiť iný modelovací prístup než lineárnu regresiu.
+Celkovo tieto štatistiky naznačujú, že model nevysvetľuje skoro žiadnu variabilitu v závislej premennej a nemusí byť štatisticky významný na úrovni signifikancie 0.05. Mohlo by to naznačovať potrebu prehodnotiť dáta, alebo skúsiť iný modelovací prístup než lineárnu regresiu. Po rozobratí údajov v datasete je jednoznačne potreba povedať, že stĺpce síce sú intuitívne, ale ich hodnoty a vztahy nepreukazujú domnieku -> napríklad skoro žiadna korelácia s vysokým BMI a Obezitou.
 
 
 ```{r}
 par(mfrow = c(1,3)) # par() sets up a plotting grid: 1 row x 3 columns
 plot(model, which = c(1,2,5))
 
-nevideneData <- tibble(Cholesterol = 300, Sedentary.Hours.Per.Day = 4, Diet_code = 2)
+nevideneData <- tibble(Cholesterol = 200, Diet_code = 1, Obesity = 1, Heart.Rate = 60)
 predict(model, newdata = nevideneData)
 ```
+
 Grafy naznačujú, že by ste mohli mať problém s niektorými predpokladmi lineárnej regresie. 
 
 
@@ -390,9 +401,7 @@ colnames(data)
 
 
 ```{r}
-numeric_columns
-
-
+non_bin_names
 
 
 p1 <- data %>%
@@ -533,21 +542,135 @@ print(barplot_smoking)
 print(barplot_obesity)
 ```
 
-1.H0: Nie je pravda, že človek nad 70 vačsou pradvepodobnosťou dostane infarkt, ako keby medzi rokmi 45-60.
-
-2.H0: Keď človek vykoná fyzickú aktivitu menej ako 2 x týždenne, nemá to žiadny vlpyv na risk infarktu.
-
-3.H0: Fajčenie nie je dostatočné aby sme klasifikovali jednotlivca, ako náchylného alebo nenáchylného na infarkt.
 
 ```{r}
+
+plot_logistic_regression <- function(data, predictors) {
+  for (predictor in predictors) {
+    # Plot
+    p <- data %>%
+      ggplot(aes_string(x = predictor, y = "Heart.Attack.Risk")) +
+      geom_point(position = position_jitter(width = 0.3, height = 0.06), 
+                 alpha = 0.05, 
+                 shape = 1, 
+                 size = 1.5) + 
+      stat_smooth(method = "glm", method.args = list(family = "binomial"), 
+                  aes(color = predictor)) +
+      ggtitle(paste("Heart Attack Probability vs", predictor), 
+              subtitle = "Visualization of logistic regression fit") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    
+    print(p)
+  }
+}
+
+
+
+predictors <- c("Pensioner", "Physical.Activity.Days.Per.Week", "Smoking", 
+                "North_America", "South_America", "Australia", "Africa", 
+                "Europe", "Systolic", "Diastolic", "Stress.Level", "Diabetes", 
+                "Alcohol.Consumption", "Triglycerides", "Sleep.Hours.Per.Day")
+
+
+
+plot_logistic_regression(data, predictors)
+```
+
+## Aj napriek nie zrovna pekným grafom všetky zvlené predikátory vo vizualizáciach vložíme do glm. 
+
+1.H0: Nie je pravda, že človek nad 67 rokov má zvýšené riziko infarktu.
+
+2.H0: Človek čo cvičí má zvýšené riziko infarktu.
+
+3.H0: Fajčenie neovplyvnuje vznik rizika infarktu.
+
+4-8.H0: Bývanie v danom kontinente nepodmienuje vznik rizika infarktu.
+
+9-10.H0: Vysoký systolický/Diastolický tlak nepodmieňuje vznik šance na infarkt. 
+
+11.H0: Vysoká úroveň stresu nemá vplyv na potencíálnu srdcovú príhodu.
+
+12.H0: Diabetes nemá vplyv na riziko infarktu.
+
+13.H0: Časté pitie alkoholu nemá vplyv na riziko infarktu.
+
+14.H0: Vysoká hladina Triglyceridov nemá vplyv na riziko infarktu.
+
+15.H0: Počet prespaných hodín za den nemá vplyv na riziko infarktu.
+
+```{r}
+
 # Fit logistic regression model
-model <- glm(Heart.Attack.Risk ~ Physical.Activity.Days.Per.Week + Smoking + Age,
+model <- glm(Heart.Attack.Risk ~ Pensioner + Physical.Activity.Days.Per.Week + Smoking + North_America + South_America + Australia + Africa + Europe + Systolic + Diastolic + Stress.Level + Diabetes + Alcohol.Consumption + Triglycerides + Sleep.Hours.Per.Day,
               data = data,
               family = binomial)
 
 # View summary of the model
 summary(model)
 
-
 ```
 
+Vidíme, že potvrdzujeme všetky H0, pričom najbližšie k zamietnutiu bola H0 o Systolickom tlaku, jej p hodnota sa blížila k 0.05 .
+
+Reálne hodnoty uložené v našom modely Logistickej regresie.
+
+```{r}
+real.classes <- model$y
+head(model$y, n=10)
+
+predicted.class.probabilities <- model$fitted.values
+predicted.classes <- if_else(predicted.class.probabilities >=0.415, 1, 0) 
+
+prediction_vs_real <- data.frame(
+  Real.Classes = real.classes,
+  Predicted.Class.Probabilities = predicted.class.probabilities,
+  Predicted.Classes = predicted.classes
+)
+
+#View(prediction_vs_real)
+```
+
+
+```{r}
+library(caret)
+caret::confusionMatrix(as_factor(predicted.classes), as_factor(real.classes), positive = "1")
+```
+
+Vydíme, že sme dosiahli Presnosť 64,13% pri zvolenom cut-off-e, pričom ale pri náhodnom výbere by sme dostali ešte lepšie výsledky. O tom nám hovorí aj Kappa. 
+
+
+```{r}
+
+TP <- sum(prediction_vs_real$Real.Classes == 1 & prediction_vs_real$Predicted.Classes == 1)
+TN <- sum(prediction_vs_real$Real.Classes == 0 & prediction_vs_real$Predicted.Classes == 0)
+FP <- sum(prediction_vs_real$Real.Classes == 0 & prediction_vs_real$Predicted.Classes == 1)
+FN <- sum(prediction_vs_real$Real.Classes == 1 & prediction_vs_real$Predicted.Classes == 0)
+
+cat("True Positives (TP):", TP, "\n")
+cat("True Negatives (TN):", TN, "\n")
+cat("False Positives (FP):", FP, "\n")
+cat("False Negatives (FN):", FN, "\n")
+
+accuracy <- (TP + TN)/(TP+TN+FN+FP)
+precision <- TP / (TP + FP)
+recall <- TP / (TP + FN)
+f1_score <- 2 * (precision * recall) / (precision + recall)
+
+paste("Accuracy score is ", accuracy)
+paste("Precision score is ", precision)
+paste("Recall score is ", recall)
+paste("F1 score is ", f1_score)
+```
+Presne tu môžeme vidieť že accuracy nieje úplne najlepší na opis kvality modelu.
+
+### Accuracy -> 64.13% -> Tento ukazovateľ nemusí adekvátne reflektovať výkonnosť modelu.
+
+### Sensitivity(Recall) -> 0.72%  - Extrémne nízka hodnota citlivosti ukazuje, že model zlyháva v identifikácii väčšiny prípadov s vysokým rizikom infraktu.
+
+### Precision ->  48.89% Ukazuje, že z predpovedí modelu označených ako vysoké riziko bolo skoro polovica skutočne vysoké riziko.
+
+### F1 ->  1.42% -> Harmonický priemer presnosti a citlivosti. Reflektuje slabú výkonnosť modelu, najmä v detekcii pozitívnych prípadov.
+
+
+Model je efektívnejší v predikovaní nerizikovosti infarktu.
