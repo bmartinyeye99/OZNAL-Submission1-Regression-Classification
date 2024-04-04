@@ -1,0 +1,284 @@
+---
+title: "Mini_projekt1"
+output: html_notebookä
+owner: "Bopkó M., Branný D."
+---
+
+
+Tento projekt je zameraný na predspracvoanie, analýzu dát a vytvorení modelu o predikovaní Infarktu. ( https://www.kaggle.com/datasets/m1relly/heart-attack-prediction ) . 
+Cieľ je dáta predspracovať podľa potrebny a vytvoriť modely lineárnej a logistickej regresie. 
+
+## Heart Attack Prediction Dataset
+
+Dáta pre predikciu srdcových infarktov zahŕňajú rôzne klinické a medicínske merania ale aj atribúty opisujúce geografickú polohu pacienta a životný štýl. Tu je stručný zoznam atribútov:
+
+1. **`Patient ID`**: Identifikačné číslo pacienta.
+2. **`Age`**: Vek pacienta.
+3. **`Sex`**: Pohlavie pacienta.
+4. **`Cholesterol`**: Hladina cholesterolu v krvi.
+5. **`Blood Pressure`**: Krvný tlak, zaznamenaný ako systolický/diastolický.
+6. **`Heart Rate`**: Srdcová frekvencia v tepoch za minútu.
+7. **`Diabetes`**: Indikátor prítomnosti diabetu (0 = nie, 1 = áno).
+8. **`Family History`**: Rodinná anamnéza srdcových ochorení (0 = nie, 1 = áno).
+9. **`Smoking`**: Fajčenie (0 = nie, 1 = áno).
+10. **`Obesity`**: Obezita (0 = nie, 1 = áno).
+11. **`Alcohol Consumption`**: Príjem alkoholu.
+12. **`Exercise Hours Per Week`**: 
+13. **`Diet`**: Popis diéty. 
+14. **`Previous Heart Problems`**: Či boli zaznamenané problémy so srdcom. 
+15. **`Medication use`**: 
+16. **`Stress level`**
+17. **`Sedentary hours per day`**
+18. **`Income`**:
+19. **`BMI`**
+20. **`Triglycerides`**
+21. **`Physical Activity Days Per Week`**: Rozloženie fyzickej aktivity do dní v týždni
+22. **`Sleep Hours Per Day`**: Počet hodín spánku / deň
+23. **`Country`**: Krajina
+24. **`Continent`**: Kontinent
+25. **`Hemisphere`**: Severná či južná pologuľa
+26. **`Heart Attack Risk`**: Riziko infarktu (0 = nie, 1 = áno).
+
+
+Načítanie potrebných knižníc pre projekt ako sú tidyverse, magrittr, data.table, caret, ggplot2, a readxl.
+
+```{r}
+library(tidyverse)
+library(magrittr) 
+library(data.table) 
+library(caret)
+library(ggplot2)
+library(readxl)
+```
+
+Nastavenie pracovnho adresára a vylistovanie súborov v ňom.
+
+```{r}
+setwd("C:/Users/David/Desktop/skola/ING/4.semester/OZNAL/Projekt/OZNAL-Submission1-Regression-Classification") 
+list.files() 
+```
+
+Načítanie csv datasetov.
+
+```{r}
+data <- read.csv("heart_attack_prediction_dataset.csv")
+names(data)
+View(data)
+```
+Opis datasetu cez summary()
+
+```{r}
+summary(data)
+```
+
+
+```{r}
+
+number_of_uniq_data <- sapply(data, function(x) length(unique(x)))
+cat("Unique values in dataset:\n")
+print(number_of_uniq_data)
+
+
+```
+Vidíme, že ako sme prepodkladali, dáta ktoré sa podľa názvu zdali byť binárne reálne disponujú dvomi hodnotami,, teda nemusíme sa zaoberať týmto problémom dalej. 
+
+Chýbajúce hodnoty -> dataset nedisponuje žiadnymi Na hodnotami, teda nieje sa nutné zbavovať žiadnych záznamov.
+
+```{r}
+missing_values_data <- colSums(is.na(data))
+cat("Missing values in 'data' dataset:\n")
+print(missing_values_data)
+```
+
+Duplikátne hodnoty - takisto, dataset neobsahuje žiadne duplikátne hodnoty a teda nieje potrebné použiť na dáta funkciu distinct()
+
+```{r}
+sum(duplicated(data))
+```
+
+Prejdeme na samotnú prípravu stĺpcov na modely. Najskôr vytvoríme dva stĺpce. Tie vzniknú "rozdelením" Blood Pressure stĺpca a teda vytvoríme Systolic a Diastolic stĺpce. 
+
+```{r}
+ data %<>%
+  mutate( 
+         Systolic = as.numeric(sapply(strsplit(Blood.Pressure, "/"), `[`, 1)),
+         Diastolic = as.numeric(sapply(strsplit(Blood.Pressure, "/"), `[`, 2))) %>%
+  relocate(Systolic, Diastolic, .after = Blood.Pressure)
+
+View(data)
+```
+
+Vzhľadom na to, že vo väčšine prípadov ľudia nevedia odhadnúť svoju fyzickú aktivitu alebo sedavý čas s takou presnosťou ako je v datasete ( 5/8 desatinnych miest). Tak si tieto hodnoty zaokrúhlime na dve desatinné miesta. 
+
+```{r}
+data$Exercise.Hours.Per.Week <- round(data$Exercise.Hours.Per.Week, 2)
+data$Sedentary.Hours.Per.Day <- round(data$Sedentary.Hours.Per.Day, 2)
+data %>% 
+  select(Exercise.Hours.Per.Week, Sedentary.Hours.Per.Day) %>%
+  head()
+```
+
+Zakódovanie hodnôt Diet a Sex do numeric
+
+```{r}
+data %<>%
+  mutate(
+    Diet_code = case_when(
+      data$Diet == "Average" ~ 1,
+      data$Diet == "Unhealthy" ~ 2,
+      data$Diet == "Healthy" ~ 0))  %>%
+  relocate(Diet_code, .before = Diet)
+
+data %<>%
+  mutate(
+    Sex_code = case_when(
+      data$Sex == "Male" ~ 0,
+      data$Sex == "Female" ~ 1))  %>%
+  relocate(Sex_code, .after = Sex)
+
+
+data %<>%
+  mutate(
+    Pensioner = case_when(
+      data$Age > 67 ~ 1,
+      .default = 0))  %>%
+  relocate(Pensioner, .after = Age)
+
+head(data)
+
+```
+
+```{r}
+#-----Helper functions-----
+panel.cor <- function(x,y, digits=2, prefix="", cex.cor){
+  usr <- par("usr")
+  on.exit(par(usr))
+  par(usr = c(0,1,0,1))
+  r <- abs(cor(x,y,use="complete.obs"))
+  txt <- format(c(r,0.123456789), digits = digits)[1]
+  txt <- paste0(prefix, txt,sep="")
+  if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
+  text(0.5, 0.5, txt, cex = cex.cor * (1 + r) / 2)
+}
+
+panel.hist <- function(x, ...){
+  usr <- par("usr")
+  on.exit(par(usr))
+  par(usr = c(usr[1:2],0,1.5))
+  h <- hist(x, plot = FALSE)
+  breaks <- h$breaks
+  nB <- length(breaks)
+  y <- h$counts
+  y <- y/max(y)
+  rect(breaks[-nB], 0, breaks[-1], y, col="white",...)
+}
+
+panel.lm <- function(x,y,col = par("col"), bg = NA, pch = par("pch"),
+                     cex = 1, col.smooth = "blue",...){
+  points(x,y,pch=pch, col=col(alpha = 0.1), bg=bg, cex=cex)
+  abline(stats::lm(x ~ y), col = "steelblue", ...)
+} 
+```
+
+
+Pozrieme sa na mužov (Sex_code == 0
+
+```{r}
+filtered_data <- data %>%
+  dplyr::filter(Sex_code == 0, Pensioner == 1)
+
+filtered_data %>%
+  dplyr::filter() %$%
+  pairs( ~ Cholesterol + Exercise.Hours.Per.Week + Sleep.Hours.Per.Day + Diet_code + BMI + Stress.Level + Sedentary.Hours.Per.Day,    
+         upper.panel= NULL, 
+         diag.panel=panel.hist,
+         lower.panel=panel.smooth)
+```
+
+```{r}
+correlation_matrix <- cor(filtered_data[, c('Cholesterol', 'Exercise.Hours.Per.Week', 'Sleep.Hours.Per.Day', 'Diet_code', 'BMI', 'Heart.Attack.Risk', 'Stress.Level', 'Sedentary.Hours.Per.Day')])
+print(correlation_matrix)
+
+# Create a dataframe from the correlation matrix
+correlation_df <- as.data.frame(correlation_matrix)
+correlation_df$row <- rownames(correlation_matrix)
+
+# Melt the dataframe to long format
+correlation_df_long <- reshape2::melt(correlation_df, id.vars = "row")
+
+# Plot heatmap
+ggplot(correlation_df_long, aes(x = row, y = variable, fill = value)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0, limit = c(-1, 1), space = "Lab", name = "Correlation") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+
+```
+Vidíme pozitívne aj negatívne korelácie, na logistickú regresiu budeme predikovať Heart.Attack.Risk, na predikovanie hladiny cholesterolu v krvi budeme používať predikáty ako BMI, Diet.code ( ktorý je nastavený tak, že čím nezdravšia strava tým vyššia hodnota), Heart.Attack.Risk a aj Stress.Level -> teda všetky očakávane pozitívne korelácie. Máme tu aj miernu negatívnu koreláciu a to očakávane znamená že s klesaujúcim počtom odcvičených hodín za týžden stúpa hladina cholesterolu (a naopak :) ). 
+
+
+Vo vzťahu k hladine Cholesterolu si teda vyplotujeme nasledujúce ploty. Tie ukázali, že asi potrebujeme do modelu viacero predikátov a teda použijeme všetky predikáty okrem Sleep.Hours.Per.Day.
+
+```{r}
+
+library(cowplot)
+
+
+p1 <- data %>%
+  filter(Sex_code == 1) %>%
+  ggplot(., aes(x = BMI, y = Cholesterol)) + 
+  geom_point(shape = 1, alpha=0.1, size = 2) + 
+  stat_smooth(method="lm", se=TRUE, fill=NA,
+              formula=y ~ poly(x, 1, raw=FALSE),colour="red", linewidth=0.3) +
+  ggtitle("Ženy", subtitle = "") + 
+  ylab("Cholesterol") + xlab("BMI") +
+  scale_y_continuous(labels = scales::comma)+
+  geom_rug(position = "jitter", size = 0.2)
+
+p2 <- data %>%
+  filter(Sex_code == 0) %>%
+  ggplot(., aes(x = BMI, y = Cholesterol)) + 
+  geom_point(shape = 1, alpha=0.1, size = 2) + 
+  stat_smooth(method="lm", se=TRUE, fill=NA,
+              formula=y ~ poly(x, 1, raw=FALSE),colour="red", linewidth=0.3) +
+  ggtitle("Muži", subtitle = "") + 
+  ylab("Cholesterol") + xlab("BMI") +
+  scale_y_continuous(labels = scales::comma)+
+  geom_rug(position = "jitter", size = 0.2)
+
+p3 <- data %>%
+  ggplot(., aes(x = factor(Sex_code), y = BMI)) + 
+  geom_boxplot(fill = "lightgrey") +
+  ggtitle("BMI") + 
+  ylab("") + xlab("") +
+  scale_x_discrete(labels = c("Ženy", "Muži"))
+
+p4 <- data %>%
+  ggplot(., aes(x = factor(Sex_code), y = Cholesterol)) + 
+  geom_boxplot(fill = "lightgrey") +
+  ggtitle("Cholesterol") + 
+  ylab("") + xlab("") +
+  scale_x_discrete(labels = c("Ženy", "Muži"))
+
+plot_grid(p1, p2, p3, p4, ncol = 2, nrow = 2)
+```
+Vzhľadom na grafy, ktoré predstavujú rôzne premenné a ich vzťahy, sa zdá, že by sme mohli formulovať hypotézu týkajúcu sa faktorov ovplyvňujúcich hladinu cholesterolu. Grafy naznačujú, že existuje aký taký vzťah medzi BMI, stravovacími návykmi (Diet_code), fyzickou aktivitou (Exercise.Hours.Per.Week), úrovňou stresu (Stress.Level), rizikom srdcového útoku (Heart.Attack.Risk) a sedavosťou počas dňa s hladinou cholesterolu.
+Zdá sa, že s vyšším BMI a nezdravými stravovacími návykmi stúpa hladina cholesterolu, zatiaľ čo vyššia fyzická aktivita môže byť spojená s nižšou hladinou cholesterolu. Na Cholesterol má ako taký efekt aj sedavosť počas dňa a úroveň stresu. 
+
+H0: BMI, stravovacie návyky (Diet_code), riziko srdcového útoku (Heart.Attack.Risk), úroveň stresu (Stress.Level), počet hodín cvičenia za týždeň (Exercise.Hours.Per.Week) a sedavost počas dňa (Sedentary.Hours.Per.Day) nemajú žiaden vplyv na hladinu cholesterolu u dospelých v produktívnom veku zo Severnej Ameriky.
+
+Táto hypotéza by bude testovaná v rámci multivariátnej lineárnej regresie, kde by sa analyzovalo, či sú tieto prediktory signifikantnými prediktormi hladiny cholesterolu. Ak by sa ukázalo, že koeficienty pre tieto premenné sú štatisticky významné, nulová hypotéza by teda bola zamietnutá.
+
+## Lineárna Regresia
+
+```{r}
+model <- filtered_data %$% 
+  lm(Cholesterol ~ BMI + Diet_code + Heart.Attack.Risk + Stress.Level + Exercise.Hours.Per.Week + Sedentary.Hours.Per.Day)
+
+summary(model)
+```
+
+
+## Logistická Regresia (Binárna Klasifikácia)
+
+
