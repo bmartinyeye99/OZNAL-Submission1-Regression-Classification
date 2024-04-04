@@ -55,7 +55,7 @@ library(cowplot)
 Nastavenie pracovnho adresára a vylistovanie súborov v ňom.
 
 ```{r}
-setwd("C:/Users/David/Desktop/skola/ING/4.semester/OZNAL/Projekt/OZNAL-Submission1-Regression-Classification") 
+setwd("D:/MRc/FIIT/ING/sem2/oznal/zadanie_1") 
 list.files() 
 ```
 
@@ -162,7 +162,7 @@ View(data)
 interesting_columns <- c("BMI", "Cholesterol")
 # Apply the function to your dataset
 cat("The dataset has", dim(data)[1], "rows and", dim(data)[2], "columns\n")
-
+dataWithOutliers <- data
 data <- handle_outliers(data, interesting_columns, 0.5)
 cat("The dataset has", dim(data)[1], "rows and", dim(data)[2], "columns\n")
 
@@ -383,4 +383,171 @@ Grafy naznačujú, že by ste mohli mať problém s niektorými predpokladmi lin
 
 ## Logistická Regresia (Binárna Klasifikácia)
 
+```{r}
+head(data)
+colnames(data)
+```
+
+
+```{r}
+numeric_columns
+
+
+
+
+p1 <- data %>%
+  ggplot(aes(x = factor(Heart.Attack.Risk), y = Age)) + 
+  geom_boxplot(fill = "lightgrey") +
+  ggtitle("") + 
+  ylab("Age") + xlab("Heart.Attack.Risk")
+
+
+p2 <- data %>%
+  ggplot(aes(x = factor(Heart.Attack.Risk), y = Heart.Rate )) + 
+  geom_boxplot(fill = "lightgrey") +
+  ggtitle("") + 
+  ylab("Heart.Rate") + xlab("Heart.Attack.Risk")
+
+
+p3 <- data %>%
+  ggplot(aes(x = factor(Heart.Attack.Risk), y = Physical.Activity.Days.Per.Week )) + 
+  geom_boxplot(fill = "lightgrey") +
+  ggtitle("") + 
+  ylab("Physical.Activity.Days.Per.Week") + xlab("Heart.Attack.Risk")
+
+
+
+p4 <- data %>%
+  ggplot(aes(x = factor(Heart.Attack.Risk), y = Sedentary.Hours.Per.Day )) + 
+  geom_boxplot(fill = "lightgrey") +
+  ggtitle("") + 
+  ylab("Sedentary.Hours.Per.Day") + xlab("Heart.Attack.Risk")
+
+
+
+```
+
+
+```{r}
+plot_grid(p1, p2, p3, p4, p5,ncol = 2, nrow = 2)
+
+
+```
+
+
+
+
+```{r}
+histogram_activity <- data %>%
+  select(Heart.Attack.Risk, Physical.Activity.Days.Per.Week) %>%
+  mutate(Group = case_when(
+    Heart.Attack.Risk == 0 & Physical.Activity.Days.Per.Week >= 2 ~ "2h + exercise and NO risk",
+    Heart.Attack.Risk == 1 & Physical.Activity.Days.Per.Week >= 2 ~ "2h + exercise and risk",
+    Heart.Attack.Risk == 0 & Physical.Activity.Days.Per.Week < 2 ~ "2h - exercise and NO risk",
+    Heart.Attack.Risk == 1 & Physical.Activity.Days.Per.Week < 2 ~ "2h - exercise and risk"
+  )) %>%
+  ggplot(aes(x = Group, fill = Group)) +
+  geom_bar() +
+  ggtitle("Histogram of Heart Attack Risk and Physical Activity Days Per Week") +
+  ylab("Count") +
+  xlab("Groups") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+print(histogram_activity)
+
+```
+
+```{r}
+histogram_smoker<- data %>%
+  select(Heart.Attack.Risk, Smoking) %>%
+  mutate(Group = case_when(
+    Heart.Attack.Risk == 0 & Smoking == 1 ~ "Smoker and not risk",
+    Heart.Attack.Risk == 1 & Smoking == 1 ~ "Smoker and risk",
+    Heart.Attack.Risk == 0 & Smoking == 0 ~ "NOT Smoker and No risk",
+    Heart.Attack.Risk == 1 & Smoking == 0 ~ "NOT Smoker and risk"
+  )) %>%
+  ggplot(aes(x = Group, fill = Group)) +
+  geom_bar() +
+  ggtitle("Histogram of Heart Attack Risk and Smoking") +
+  ylab("Count") +
+  xlab("Groups") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+print(histogram_smoker)
+```
+
+```{r}
+average_heart_attack_risk <- aggregate(Heart.Attack.Risk ~ Age, data = data, FUN = mean)
+
+# Create a plot
+line_plot <- ggplot(data = average_heart_attack_risk, aes(x = Age, y = Heart.Attack.Risk)) +
+  geom_line(color = "blue", size = 1) +
+  geom_point(color = "blue", size = 1.5, shape = 19) +
+  xlab("Age") +
+  ylab("Average Heart Attack Risk") +
+  ggtitle("Average Heart Attack Risk Over Age") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(axis.text = element_text(size = 12), 
+        axis.title = element_text(size = 14, face = "bold")) +
+  theme(panel.grid.major = element_line(colour = "grey", linetype = "dashed")) +
+  geom_vline(xintercept = c(40, 55), linetype = "dashed", color = "red") +
+  annotate("text", x = 40, y = average_heart_attack_risk$Heart.Attack.Risk[which(average_heart_attack_risk$Age == 40)] + 0.02, label = "Middle Age", color = "red", size = 4, hjust = 0, vjust = 0) +
+  annotate("text", x = 55, y = average_heart_attack_risk$Heart.Attack.Risk[which(average_heart_attack_risk$Age == 55)] + 0.02, label = "Senior Age", color = "red", size = 4, hjust = 0, vjust = 0) +
+  geom_rect(aes(xmin = 45, xmax = 60, ymin = -Inf, ymax = Inf), fill = "yellow", alpha = 0.002) +
+  scale_x_continuous(breaks = seq(20, 100, by = 10)) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, by = 0.1))
+
+print(line_plot)
+```
+```{r}
+
+# Calculate the mean percentage of alcohol consumption for each Heart Attack Risk group
+alcohol_percentage <- aggregate(data$Alcohol.Consumption, by = list(data$Heart.Attack.Risk), FUN = function(x) mean(x, na.rm = TRUE) * 100)
+
+# Calculate the mean percentage of smoking for each Heart Attack Risk group
+smoking_percentage <- aggregate(data$Smoking, by = list(data$Heart.Attack.Risk), FUN = function(x) mean(x, na.rm = TRUE) * 100)
+
+# Calculate the mean percentage of obesity for each Heart Attack Risk group
+obesity_percentage <- aggregate(data$Obesity, by = list(data$Heart.Attack.Risk), FUN = function(x) mean(x, na.rm = TRUE) * 100)
+
+create_barplot <- function(data, title, ylab) {
+  ggplot(data, aes(x = Group.1, y = x, fill = "Factor")) +
+    geom_bar(stat = "identity", position = "dodge") +
+    ggtitle(title) +
+    xlab("Heart Attack Risk") +
+    ylab(ylab) +
+    theme_minimal() +
+    theme(legend.position = "none") +
+    scale_fill_manual(values = c("#D80032"))
+}
+
+# Create individual barplots
+barplot_alcohol <- create_barplot(alcohol_percentage, "Percentage of Alcohol Consumers by Heart Attack Risk", "Percentage of Alcohol Consumers")
+barplot_smoking <- create_barplot(smoking_percentage, "Percentage of Smokers by Heart Attack Risk", "Percentage of Smokers")
+barplot_obesity <- create_barplot(obesity_percentage, "Percentage of Obese Individuals by Heart Attack Risk", "Percentage of Obese Individuals")
+
+# Print the barplots
+print(barplot_alcohol)
+print(barplot_smoking)
+print(barplot_obesity)
+```
+
+1.H0: Nie je pravda, že človek nad 70 vačsou pradvepodobnosťou dostane infarkt, ako keby medzi rokmi 45-60.
+
+2.H0: Keď človek vykoná fyzickú aktivitu menej ako 2 x týždenne, nemá to žiadny vlpyv na risk infarktu.
+
+3.H0: Fajčenie nie je dostatočné aby sme klasifikovali jednotlivca, ako náchylného alebo nenáchylného na infarkt.
+
+```{r}
+# Fit logistic regression model
+model <- glm(Heart.Attack.Risk ~ Physical.Activity.Days.Per.Week + Smoking + Age,
+              data = data,
+              family = binomial)
+
+# View summary of the model
+summary(model)
+
+
+```
 
