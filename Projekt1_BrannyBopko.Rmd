@@ -49,6 +49,7 @@ library(data.table)
 library(caret)
 library(ggplot2)
 library(readxl)
+library(cowplot)
 ```
 
 Nastavenie pracovnho adresára a vylistovanie súborov v ňom.
@@ -63,7 +64,7 @@ Načítanie csv datasetov.
 ```{r}
 data <- read.csv("heart_attack_prediction_dataset.csv")
 names(data)
-View(data)
+head(data)
 ```
 Opis datasetu cez summary()
 
@@ -82,19 +83,94 @@ print(number_of_uniq_data)
 ```
 Vidíme, že ako sme prepodkladali, dáta ktoré sa podľa názvu zdali byť binárne reálne disponujú dvomi hodnotami,, teda nemusíme sa zaoberať týmto problémom dalej. 
 
-Chýbajúce hodnoty -> dataset nedisponuje žiadnymi Na hodnotami, teda nieje sa nutné zbavovať žiadnych záznamov.
+
+Vykreslíme si grafy, ktoré nám povedia o rozložení v danom stĺpci.
 
 ```{r}
-missing_values_data <- colSums(is.na(data))
-cat("Missing values in 'data' dataset:\n")
-print(missing_values_data)
+
+numeric_columns <- sapply(data, is.numeric)  # Identify numeric columns
+non_binary_numeric_columns <- numeric_columns & !apply(data, 2, function(x) all(x %in% c(0, 1)))
+non_bin_names <- names(non_binary_numeric_columns[non_binary_numeric_columns])
+
+print_histograms <- function(data, columns) {
+  for (col_name in columns) {
+    p <- ggplot(data, aes_string(x = col_name)) +
+      geom_histogram(bins = 30, fill = "skyblue", color = "black") +
+      theme_minimal() +
+      ggtitle(paste("Distribution of", col_name)) +
+      xlab(col_name) +
+      ylab("Count")
+    print(p)
+  }
+}
+
+print_histograms(data, non_bin_names)
 ```
 
-Duplikátne hodnoty - takisto, dataset neobsahuje žiadne duplikátne hodnoty a teda nieje potrebné použiť na dáta funkciu distinct()
+Boxploty pre každý nebinárny stĺpec
+
 
 ```{r}
-sum(duplicated(data))
+for (col_name in non_bin_names){
+  p <- ggplot(data, aes_string(y = col_name)) + 
+      geom_boxplot(fill = "lightgrey") +
+      ggtitle(paste("Distribution of", col_name)) + 
+      ylab(col_name) + xlab("")
+  print(p)
+}
+
 ```
+
+
+```{r}
+handle_outliers <- function(data, columns, sensitivity) {
+  na_counts <- setNames(numeric(length(columns)), columns)  # Initialize a vector to hold NA counts for each column
+  
+  for (col in columns) {
+    # Count NAs before handling outliers
+    na_count_before <- sum(is.na(data[[col]]))
+    
+    # Calculate quartiles and IQR
+    q1 <- quantile(data[[col]], 0.25, na.rm = TRUE)
+    q3 <- quantile(data[[col]], 0.75, na.rm = TRUE)
+    iqr <- q3 - q1
+    
+    # Define upper and lower bounds for outliers
+    upper_bound <- q3 + iqr*sensitivity
+    lower_bound <- q1 - iqr*sensitivity
+    
+    print(paste("Upper bound for", col, ":", upper_bound))
+    print(paste("Lower bound for", col, ":", lower_bound))
+    # Replace outliers with NA
+    data[[col]] <- ifelse(data[[col]] < lower_bound | data[[col]] > upper_bound, NA, data[[col]])
+    
+    # Count NAs after handling outliers
+    na_count_after <- sum(is.na(data[[col]]))
+    
+    # Calculate the number of NAs added
+    na_counts[col] <- na_count_after - na_count_before
+    
+    # Print the number of NAs added for the current column
+    cat("NAs added in", col, ":", na_counts[col], "\n")
+    data <- na.omit(data)
+  }
+  
+  # Return the cleaned data and the NA counts
+  return(data)
+}
+View(data)
+interesting_columns <- c("BMI", "Cholesterol")
+# Apply the function to your dataset
+cat("The dataset has", dim(data)[1], "rows and", dim(data)[2], "columns\n")
+
+data <- handle_outliers(data, interesting_columns, 0.5)
+cat("The dataset has", dim(data)[1], "rows and", dim(data)[2], "columns\n")
+
+
+
+
+```
+
 
 Prejdeme na samotnú prípravu stĺpcov na modely. Najskôr vytvoríme dva stĺpce. Tie vzniknú "rozdelením" Blood Pressure stĺpca a teda vytvoríme Systolic a Diastolic stĺpce. 
 
@@ -105,7 +181,7 @@ Prejdeme na samotnú prípravu stĺpcov na modely. Najskôr vytvoríme dva stĺp
          Diastolic = as.numeric(sapply(strsplit(Blood.Pressure, "/"), `[`, 2))) %>%
   relocate(Systolic, Diastolic, .after = Blood.Pressure)
 
-View(data)
+head(data)
 ```
 
 Vzhľadom na to, že vo väčšine prípadov ľudia nevedia odhadnúť svoju fyzickú aktivitu alebo sedavý čas s takou presnosťou ako je v datasete ( 5/8 desatinnych miest). Tak si tieto hodnoty zaokrúhlime na dve desatinné miesta. 
@@ -148,6 +224,9 @@ head(data)
 
 ```
 
+
+
+
 ```{r}
 #-----Helper functions-----
 panel.cor <- function(x,y, digits=2, prefix="", cex.cor){
@@ -181,22 +260,19 @@ panel.lm <- function(x,y,col = par("col"), bg = NA, pch = par("pch"),
 ```
 
 
-Pozrieme sa na mužov (Sex_code == 0
+
 
 ```{r}
-filtered_data <- data %>%
-  dplyr::filter(Sex_code == 0, Pensioner == 1)
-
-filtered_data %>%
+data %>%
   dplyr::filter() %$%
-  pairs( ~ Cholesterol + Exercise.Hours.Per.Week + Sleep.Hours.Per.Day + Diet_code + BMI + Stress.Level + Sedentary.Hours.Per.Day,    
+  pairs( ~ BMI + Exercise.Hours.Per.Week + Diet_code + Cholesterol + Sedentary.Hours.Per.Day ,    
          upper.panel= NULL, 
          diag.panel=panel.hist,
          lower.panel=panel.smooth)
 ```
 
 ```{r}
-correlation_matrix <- cor(filtered_data[, c('Cholesterol', 'Exercise.Hours.Per.Week', 'Sleep.Hours.Per.Day', 'Diet_code', 'BMI', 'Heart.Attack.Risk', 'Stress.Level', 'Sedentary.Hours.Per.Day')])
+correlation_matrix <- cor(data[, c('BMI', 'Exercise.Hours.Per.Week', 'Diet_code', 'Cholesterol', 'Sedentary.Hours.Per.Day', 'Heart.Rate')])
 print(correlation_matrix)
 
 # Create a dataframe from the correlation matrix
@@ -214,15 +290,14 @@ ggplot(correlation_df_long, aes(x = row, y = variable, fill = value)) +
   theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
 
 ```
-Vidíme pozitívne aj negatívne korelácie, na logistickú regresiu budeme predikovať Heart.Attack.Risk, na predikovanie hladiny cholesterolu v krvi budeme používať predikáty ako BMI, Diet.code ( ktorý je nastavený tak, že čím nezdravšia strava tým vyššia hodnota), Heart.Attack.Risk a aj Stress.Level -> teda všetky očakávane pozitívne korelácie. Máme tu aj miernu negatívnu koreláciu a to očakávane znamená že s klesaujúcim počtom odcvičených hodín za týžden stúpa hladina cholesterolu (a naopak :) ). 
+Vidíme pozitívne aj negatívne korelácie, na logistickú regresiu budeme predikovať Heart.Attack.Risk, na predikovanie hladiny cholesterolu v krvi budeme používať predikáty ako BMI a Diet.code ( ktorý je nastavený tak, že čím nezdravšia strava tým vyššia hodnota) teda všetky očakávane pozitívne korelácie.
 
 
-Vo vzťahu k hladine Cholesterolu si teda vyplotujeme nasledujúce ploty. Tie ukázali, že asi potrebujeme do modelu viacero predikátov a teda použijeme všetky predikáty okrem Sleep.Hours.Per.Day.
+Vo vzťahu k hladine Cholesterolu si teda vyplotujeme nasledujúce ploty. Tie ukázali, že asi potrebujeme do modelu viacero predikátov a teda použijeme aj Age všetky predikáty okrem Sleep.Hours.Per.Day.
+
+
 
 ```{r}
-
-library(cowplot)
-
 
 p1 <- data %>%
   filter(Sex_code == 1) %>%
@@ -230,7 +305,7 @@ p1 <- data %>%
   geom_point(shape = 1, alpha=0.1, size = 2) + 
   stat_smooth(method="lm", se=TRUE, fill=NA,
               formula=y ~ poly(x, 1, raw=FALSE),colour="red", linewidth=0.3) +
-  ggtitle("Ženy", subtitle = "") + 
+  ggtitle("Ženy penzistky", subtitle = "") + 
   ylab("Cholesterol") + xlab("BMI") +
   scale_y_continuous(labels = scales::comma)+
   geom_rug(position = "jitter", size = 0.2)
@@ -241,7 +316,7 @@ p2 <- data %>%
   geom_point(shape = 1, alpha=0.1, size = 2) + 
   stat_smooth(method="lm", se=TRUE, fill=NA,
               formula=y ~ poly(x, 1, raw=FALSE),colour="red", linewidth=0.3) +
-  ggtitle("Muži", subtitle = "") + 
+  ggtitle("Muži penzisti", subtitle = "") + 
   ylab("Cholesterol") + xlab("BMI") +
   scale_y_continuous(labels = scales::comma)+
   geom_rug(position = "jitter", size = 0.2)
@@ -262,21 +337,48 @@ p4 <- data %>%
 
 plot_grid(p1, p2, p3, p4, ncol = 2, nrow = 2)
 ```
-Vzhľadom na grafy, ktoré predstavujú rôzne premenné a ich vzťahy, sa zdá, že by sme mohli formulovať hypotézu týkajúcu sa faktorov ovplyvňujúcich hladinu cholesterolu. Grafy naznačujú, že existuje aký taký vzťah medzi BMI, stravovacími návykmi (Diet_code), fyzickou aktivitou (Exercise.Hours.Per.Week), úrovňou stresu (Stress.Level), rizikom srdcového útoku (Heart.Attack.Risk) a sedavosťou počas dňa s hladinou cholesterolu.
-Zdá sa, že s vyšším BMI a nezdravými stravovacími návykmi stúpa hladina cholesterolu, zatiaľ čo vyššia fyzická aktivita môže byť spojená s nižšou hladinou cholesterolu. Na Cholesterol má ako taký efekt aj sedavosť počas dňa a úroveň stresu. 
+Vzhľadom na grafy, ktoré predstavujú rôzne premenné a ich vzťahy, sa zdá, že by sme mohli formulovať hypotézu týkajúcu sa faktorov ovplyvňujúcich hodnotu BMI. Grafy naznačujú, že existuje aký taký vzťah medzi Cholesterolom, stravovacími návykmi (Diet_code).
+ 
 
-H0: BMI, stravovacie návyky (Diet_code), riziko srdcového útoku (Heart.Attack.Risk), úroveň stresu (Stress.Level), počet hodín cvičenia za týždeň (Exercise.Hours.Per.Week) a sedavost počas dňa (Sedentary.Hours.Per.Day) nemajú žiaden vplyv na hladinu cholesterolu u dospelých v produktívnom veku zo Severnej Ameriky.
+Cholesterol (H0): Zvýšenie hladiny cholesterolu nemá žiadny vplyv na hodnoty BMI jedincov. Teda, koeficient pre premennú cholesterol v modeli lineárnej regresie je rovný nule.
 
-Táto hypotéza by bude testovaná v rámci multivariátnej lineárnej regresie, kde by sa analyzovalo, či sú tieto prediktory signifikantnými prediktormi hladiny cholesterolu. Ak by sa ukázalo, že koeficienty pre tieto premenné sú štatisticky významné, nulová hypotéza by teda bola zamietnutá.
+Diet_code (H0): Zmena v diétnom kóde nemá žiadny vplyv na hodnoty BMI jedincov. Koeficient pre premennú Diet_code v modeli lineárnej regresie je rovný nule.
 
 ## Lineárna Regresia
 
 ```{r}
-model <- filtered_data %$% 
-  lm(Cholesterol ~ BMI + Diet_code + Heart.Attack.Risk + Stress.Level + Exercise.Hours.Per.Week + Sedentary.Hours.Per.Day)
+model <- data %$% 
+  lm(BMI ~ Cholesterol + Diet_code )
 
 summary(model)
 ```
+Na základe výstupu z lineárneho regresného modelu:
+
+- Intercept: Priemerná hodnota BMI, keď sú všetky ostatné premenné nulové, je 28.37. Tento koeficient je štatisticky významný (p < 0.05).
+
+- Cholesterol: Za každú jednotku zvýšenia cholesterolu sa BMI zvýši o 0.001837, čo je štatisticky významné (p < 0.05). Hoci je vplyv malý, je považovaný za štatisticky signifikantný.
+
+- Diet_code: Tento koeficient ukazuje zmenu v BMI pre zmenu dietného kódu o jednu jednotku. Hodnota -0.0934183 nie je štatisticky významná (p > 0.05), čo naznačuje, že zmena diéty nemá významný vplyv na BMI. Dokonca ukazuje opačný ako očakávaný výsledok, kedže hodnoty v Diet.Code sú nastavené tak, že čím vyšia hodnota tým viac očakávame BMI.
+
+
+Model má nízke R-squared hodnoty, čo naznačuje, že tieto premenné spoločne vysvetľujú len malú časť variability hladiny cholesterolu. Celkový F-test je štatisticky významný, čo naznačuje, že model ako celok má určitú predikčnú schopnosť, ale táto schopnosť je značne obmedzená :D .
+
+Residual standard error: Priemerná odchýlka skutočných hodnôt BMI od hodnôt predpovedaných modelom je 6.245. Značí to o pomerne zlom prisôsobení modelu.
+Multiple R-squared: Koeficient determinácie 0.0006899  hovorí, že model vysvetľuje len veľmi malé percento variability v BMI.
+Adjusted R-squared: Upravený R-kvadrát 0.0004556 zohľadňuje počet prediktorov v modeli a ponúka realistický pohľad na vysvetľujúcu silu modelu, ktorá je stále veľmi nízka.
+
+Celkovo tieto štatistiky naznačujú, že model nevysvetľuje skoro žiadnu variabilitu v závislej premennej a nemusí byť štatisticky významný na úrovni signifikancie 0.05. Mohlo by to naznačovať potrebu prehodnotiť dáta, alebo skúsiť iný modelovací prístup než lineárnu regresiu.
+
+
+```{r}
+par(mfrow = c(1,3)) # par() sets up a plotting grid: 1 row x 3 columns
+plot(model, which = c(1,2,5))
+
+nevideneData <- tibble(Cholesterol = 300, Sedentary.Hours.Per.Day = 4, Diet_code = 2)
+predict(model, newdata = nevideneData)
+```
+Grafy naznačujú, že by ste mohli mať problém s niektorými predpokladmi lineárnej regresie. 
+
 
 
 ## Logistická Regresia (Binárna Klasifikácia)
